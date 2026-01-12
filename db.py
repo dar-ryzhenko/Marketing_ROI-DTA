@@ -6,6 +6,9 @@ cur = conn.cursor()
 with open('orders_sqlite.sql', 'r', encoding='utf-8') as f:
     sql_script = f.read()
 
+
+
+
 cur.executescript(sql_script)
 
 cur.execute(''' 
