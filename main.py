@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import db_sql as db
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sqlalchemy import text
 
@@ -144,6 +146,81 @@ def main():
     return df[["month", "total_sales", "marketing_spend", "roi"]]
   monthly_roi = monthly_roi(sales_marketing)
   monthly_roi.to_csv("monthly_roi.csv", index=False)
+
+  # Витрати по каналах і перевірка повноти
+  def check_channel_completeness(marketing_clean: pd.DataFrame) -> pd.DataFrame:
+      pivot = marketing_clean.pivot_table(
+          index="month", columns="channel", values="spend_amount", aggfunc="sum"
+      )
+      # Доповнимо очікуваними каналами, навіть якщо їх немає в даних
+      expected_channels = ["Facebook", "Google Ads", "Instagram", "TikTok", "YouTube"]
+      for ch in expected_channels:
+          if ch not in pivot.columns:
+              pivot[ch] = np.nan
+      pivot = pivot[expected_channels]  # впорядкуємо колонки
+
+      # Додамо прапорці повноти
+      pivot["complete_all_channels"] = pivot[expected_channels].notna().all(axis=1)
+      pivot["missing_channels"] = pivot[expected_channels].isna().sum(axis=1)
+      return pivot.reset_index()
+
+  channel_check = check_channel_completeness(df_marketing_clean)
+
+  # Графік: Продажі vs Витрати
+  def plot_sales_vs_spend(sales_marketing: pd.DataFrame, marketing_clean: pd.DataFrame):
+      # Лінія продажів
+      fig, ax = plt.subplots()
+
+      ax.plot(sales_marketing["month"], sales_marketing["total_sales"], color="black", label="Продажі")
+      ax.set_xlabel("Місяць")
+      ax.set_ylabel("Сума продажів")
+      ax.legend(loc="upper left")
+
+      plt.title("Продажі (лінія) та маркетингові витрати по каналах (стек)")
+
+      # Підготуємо стек витрат по каналах
+      pivot = marketing_clean.pivot_table(
+          index="month", columns="channel", values="spend_amount", aggfunc="sum"
+      ).fillna(0)
+      # Впорядкуємо канали
+      cols = ["Facebook", "Google Ads", "Instagram", "TikTok", "YouTube"]
+      for c in cols:
+          if c not in pivot.columns:
+              pivot[c] = 0.0
+      pivot = pivot[cols].sort_index()
+
+      # Друга вісь для витрат
+      ax2 = ax.twinx()
+      ax2.stackplot(
+          pivot.index,
+          [pivot[c].values for c in cols],
+          labels=cols,
+          alpha=0.4
+      )
+      ax2.set_ylabel("Маркетингові витрати")
+      ax2.legend(loc="upper right")
+      plt.tight_layout()
+      plt.show()
+
+  # plot_sales_vs_spend(sales_marketing, df_marketing_clean)    графік
+
+  # Таблиці для презентації топ-3 клієнтів
+  def build_top3_customers(orders_df: pd.DataFrame) -> pd.DataFrame:
+    top3 = (
+        orders_df.groupby("customer_id", as_index=False)
+        .agg(orders_count=("order_id", "count"), total_spent=("order_amount", "sum"))
+        .sort_values("total_spent", ascending=False)
+        .head(3)
+    )
+    return top3
+
+  top3_customers = build_top3_customers(orders)
+
+  top3_customers.to_csv("out_top3_customers.csv", index=False)
+  channel_check.to_csv("out_channel_check.csv", index=False)
+
+
+
 
 if __name__ == "__main__":
   main()
